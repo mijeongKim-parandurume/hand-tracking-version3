@@ -1,0 +1,414 @@
+<!-- index.html 파일의 <head> 섹션에 추가해야 할 스크립트 -->
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>웹캠 핸드 트래킹 데모</title>
+        <style>
+            html, body {
+                margin: 0;
+                padding: 0;
+                overflow: hidden;
+                width: 100%;
+                height: 100vh;
+                font-family: Arial, sans-serif;
+            }
+    
+            #info {
+                position: fixed;
+                top: 10px;
+                left: 10px;
+                color: white;
+                background-color: rgba(0, 0, 0, 0.7);
+                padding: 10px;
+                border-radius: 5px;
+                z-index: 100;
+                max-width: 400px;
+            }
+    
+            #videoElement {
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                width: 320px;
+                height: 240px;
+                border: 2px solid white;
+                z-index: 100;
+                transform: scaleX(-1);
+            }
+    
+            canvas {
+                display: block;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100% !important;
+                height: 100% !important;
+            }
+            
+            #depthInfo {
+                position: fixed; 
+                bottom: 10px; 
+                left: 10px; 
+                color: white; 
+                background-color: rgba(0, 0, 0, 0.7); 
+                padding: 10px; 
+                border-radius: 5px; 
+                z-index: 100;
+            }
+            
+            /* 메쉬 표시 토글 버튼 추가 */
+            #toggleMeshButton {
+                position: fixed;
+                bottom: 10px;
+                right: 10px;
+                padding: 10px;
+                background-color: rgba(0, 0, 0, 0.7);
+                color: white;
+                border: none;
+                border-radius: 5px;
+                cursor: pointer;
+                z-index: 100;
+            }
+        </style>
+    </head>
+    <body>
+        <div id="info">
+            <h1>웹캠 핸드 트래킹 데모</h1>
+            <p>손을 웹캠 앞에서 움직여보세요. 다양한 방법으로 큐브를 조작할 수 있습니다:</p>
+            <ul>
+                <li>엄지와 검지를 붙여 핀치 제스처로 큐브를 집을 수 있습니다 (빨간색)</li>
+                <li>손을 오므려 손 전체로 큐브를 잡을 수 있습니다 (파란색)</li>
+                <li>양손으로 동시에 물체를 잡아 회전시킬 수 있습니다 (노란색)</li>
+                <li>물체를 던질 수 있습니다 - 잡은 상태에서 빠르게 손을 움직인 후 놓으세요</li>
+            </ul>
+        </div>
+        <video id="videoElement" playsinline autoplay></video>
+        
+        <div id="depthInfo">
+            <p>Z축 깊이: <span id="zDepthValue">인식 중...</span></p>
+            <p>손 크기: <span id="handSizeValue">인식 중...</span></p>
+        </div>
+        
+        <!-- 메쉬 표시 토글 버튼 추가 -->
+        <button id="toggleMeshButton">3D 손 메쉬 표시</button>
+    
+        <!-- External Libraries -->
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+        <!-- GLTFLoader 추가 -->
+        <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1640029074/camera_utils.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.3.1620248257/drawing_utils.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+    
+        <!-- Application Scripts -->
+        <script src="js/utils.js"></script>
+        <script src="js/physics.js"></script>
+        <script src="js/scene.js"></script>
+        <script src="js/handTracking.js"></script>
+        <script src="js/interactions.js"></script>
+        <script src="js/main.js"></script>
+        <script src="js/export.js"></script>
+
+        <!-- index.html의 script 부분에 추가 -->
+        <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/exporters/GLTFExporter.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/exporters/OBJExporter.js"></script>
+
+        <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/examples/jsm/exporters/GLTFExporter.js"></script>
+        <script>
+            // 페이지 로드 완료 후 실행
+            window.addEventListener('load', function() {
+              // 내보내기 버튼 생성
+              const exportBtn = document.createElement('button');
+              exportBtn.textContent = '손 랜드마크 내보내기';
+              exportBtn.style.position = 'fixed';
+              exportBtn.style.top = '360px';
+              exportBtn.style.right = '10px';
+              exportBtn.style.padding = '10px';
+              exportBtn.style.backgroundColor = '#ff6600';
+              exportBtn.style.color = 'white';
+              exportBtn.style.border = 'none';
+              exportBtn.style.borderRadius = '5px';
+              exportBtn.style.zIndex = '1000';
+              exportBtn.style.cursor = 'pointer';
+              
+              // 버튼 클릭 이벤트
+              exportBtn.onclick = function() {
+                // 왼손 또는 오른손 선택 다이얼로그
+                const handIndex = confirm('왼손을 내보내려면 [확인]을, 오른손을 내보내려면 [취소]를 클릭하세요.') ? 0 : 1;
+                
+                // 손 랜드마크 확인
+                if (!window.app.fingerJoints || !window.app.fingerJoints[handIndex] || 
+                    window.app.fingerJoints[handIndex].length === 0) {
+                  alert('손 랜드마크가 준비되지 않았습니다. 화면에 손을 보여주고 다시 시도하세요.');
+                  return;
+                }
+                
+                try {
+                  // 랜드마크와 연결 정보를 모아서 내보내기
+                  const landmarkData = extractHandLandmarkData(handIndex);
+                  
+                  // 파일로 저장
+                  const blob = new Blob([JSON.stringify(landmarkData, null, 2)], {type: 'application/json'});
+                  const link = document.createElement('a');
+                  link.href = URL.createObjectURL(blob);
+                  link.download = `hand_landmarks_${handIndex}_${Date.now()}.json`;
+                  link.click();
+                  
+                  // 리소스 정리
+                  setTimeout(() => URL.revokeObjectURL(link.href), 100);
+                  
+                  alert('손 랜드마크 데이터를 성공적으로 내보냈습니다!');
+                  
+                  // 보너스: OBJ 형식으로도 내보내기
+                  const objString = convertLandmarksToOBJ(landmarkData);
+                  const objBlob = new Blob([objString], {type: 'text/plain'});
+                  const objLink = document.createElement('a');
+                  objLink.href = URL.createObjectURL(objBlob);
+                  objLink.download = `hand_landmarks_${handIndex}_${Date.now()}.obj`;
+                  objLink.click();
+                  
+                  // 리소스 정리
+                  setTimeout(() => URL.revokeObjectURL(objLink.href), 100);
+                } catch (error) {
+                  console.error('내보내기 중 오류 발생:', error);
+                  alert('내보내기 중 오류가 발생했습니다: ' + error.message);
+                }
+              };
+              
+              // 페이지에 버튼 추가
+              document.body.appendChild(exportBtn);
+              
+              // 손 랜드마크 데이터 추출 함수
+              function extractHandLandmarkData(handIndex) {
+                const joints = window.app.fingerJoints[handIndex];
+                const connections = [];
+                
+                // 손 관절 위치 추출
+                const landmarks = joints.map(joint => ({
+                  position: {
+                    x: joint.position.x,
+                    y: joint.position.y,
+                    z: joint.position.z
+                  }
+                }));
+                
+                // 손가락 관절 연결 정의 (MediaPipe 인덱스 기준)
+                const connectionIndices = [
+                  [0, 1], [1, 2], [2, 3], [3, 4],         // 엄지
+                  [0, 5], [5, 6], [6, 7], [7, 8],         // 검지
+                  [0, 9], [9, 10], [10, 11], [11, 12],    // 중지
+                  [0, 13], [13, 14], [14, 15], [15, 16],  // 약지
+                  [0, 17], [17, 18], [18, 19], [19, 20],  // 소지
+                  [5, 9], [9, 13], [13, 17],              // 손바닥
+                  [0, 5], [0, 17]                         // 손목-손바닥
+                ];
+                
+                // 연결 정보 추출
+                window.app.handMeshes[handIndex].children.forEach(line => {
+                  if (line.userData && line.userData.startJoint !== undefined) {
+                    connections.push({
+                      start: line.userData.startJoint,
+                      end: line.userData.endJoint
+                    });
+                  }
+                });
+                
+                const mediapipeNames = [
+                  "wrist",
+                  "thumb_cmc", "thumb_mcp", "thumb_ip", "thumb_tip",
+                  "index_finger_mcp", "index_finger_pip", "index_finger_dip", "index_finger_tip",
+                  "middle_finger_mcp", "middle_finger_pip", "middle_finger_dip", "middle_finger_tip",
+                  "ring_finger_mcp", "ring_finger_pip", "ring_finger_dip", "ring_finger_tip",
+                  "pinky_mcp", "pinky_pip", "pinky_dip", "pinky_tip"
+                ];
+
+                const bones = [];
+                connectionIndices.forEach(([parentIdx, childIdx]) => {
+                  bones.push({
+                    parent: parentIdx,
+                    child: childIdx,
+                    name: `${mediapipeNames[childIdx]}`
+                  });
+                });
+                
+                // 랜드마크와 본 정보를 포함한 데이터
+                return {
+                  handIndex: handIndex, // 0=왼손, 1=오른손
+                  landmarks: landmarks,
+                  connections: connectionIndices,
+                  bones: bones,
+                  metadata: {
+                    exportTime: new Date().toISOString(),
+                    format: "MediaPipe Hand Landmarks",
+                    version: "1.0"
+                  }
+                };
+              }
+              
+              // 랜드마크를 OBJ 형식으로 변환하는 함수
+              function convertLandmarksToOBJ(landmarkData) {
+                let objString = '# Hand Landmarks OBJ Model\n';
+                objString += '# Exported from MediaPipe Hand Tracking\n\n';
+                
+                // 관절 위치를 정점으로 변환
+                landmarkData.landmarks.forEach((landmark, index) => {
+                  objString += `v ${landmark.position.x} ${landmark.position.y} ${landmark.position.z}\n`;
+                });
+                
+                objString += '\n# Lines (edges between joints)\n';
+                
+                // 연결을 선으로 변환
+                landmarkData.connections.forEach(([start, end]) => {
+                  // OBJ 형식에서는 인덱스가 1부터 시작
+                  objString += `l ${start + 1} ${end + 1}\n`;
+                });
+                
+                // 손 관절 이름을 주석으로 추가
+                objString += '\n# Joint Names\n';
+                const jointNames = [
+                  "WRIST",
+                  "THUMB_CMC", "THUMB_MCP", "THUMB_IP", "THUMB_TIP",
+                  "INDEX_MCP", "INDEX_PIP", "INDEX_DIP", "INDEX_TIP",
+                  "MIDDLE_MCP", "MIDDLE_PIP", "MIDDLE_DIP", "MIDDLE_TIP",
+                  "RING_MCP", "RING_PIP", "RING_DIP", "RING_TIP",
+                  "PINKY_MCP", "PINKY_PIP", "PINKY_DIP", "PINKY_TIP"
+                ];
+                
+                jointNames.forEach((name, index) => {
+                  objString += `# ${index}: ${name}\n`;
+                });
+                
+                // 뼈 구조 정보 추가
+                objString += '\n# Bone Structure\n';
+                landmarkData.bones.forEach(bone => {
+                  objString += `# Bone: ${bone.name}, Parent: ${jointNames[bone.parent]}, Child: ${jointNames[bone.child]}\n`;
+                });
+                
+                return objString;
+              }
+            });
+          </script>
+          
+          <!-- 랜드마크 모드 전환 키보드 이벤트 -->
+          <script>
+              document.addEventListener('keydown', function(event) {
+                  if (event.key === '1') {
+                      // 기본 랜드마크 모드 (원과 선)
+                      app.useBasicLandmarks = true;
+                      app.useSimpleLandmarks = false;
+                      console.log("기본 랜드마크 모드 활성화 (원과 선)");
+                  } else if (event.key === '2') {
+                      // 향상된 랜드마크 모드 (3D 메쉬)
+                      app.useBasicLandmarks = false;
+                      app.useSimpleLandmarks = true;
+                      console.log("향상된 랜드마크 모드 활성화 (3D 메쉬)");
+                  }
+              });
+          </script>
+    </body>
+    </html>
+
+    // index.html 파일에 추가할 메쉬 크기 조절 컨트롤
+    /*
+    <!-- 메쉬 크기 조절 컨트롤 -->
+    <div id="meshControls" style="position: fixed; top: 10px; right: 340px; background: rgba(0,0,0,0.7); padding: 10px; color: white; z-index: 100; border-radius: 5px;">
+      <div>
+        <label>손 메쉬 크기: <input type="range" id="meshScaleSlider" min="0.05" max="0.5" step="0.01" value="0.1"></label>
+        <span id="scaleValue">0.1</span>
+      </div>
+      <div style="margin-top: 5px;">
+        <label>손 메쉬 X 오프셋: <input type="range" id="meshOffsetXSlider" min="-1" max="1" step="0.1" value="0"></label>
+        <span id="offsetXValue">0</span>
+      </div>
+      <div style="margin-top: 5px;">
+        <label>손 메쉬 Y 오프셋: <input type="range" id="meshOffsetYSlider" min="-1" max="1" step="0.1" value="0"></label>
+        <span id="offsetYValue">0</span>
+      </div>
+      <div style="margin-top: 5px;">
+        <label>손 메쉬 Z 오프셋: <input type="range" id="meshOffsetZSlider" min="-1" max="1" step="0.1" value="0"></label>
+        <span id="offsetZValue">0</span>
+      </div>
+    </div>
+    */
+
+
+    // index.html 파일에 추가할 토글 버튼 코드
+    /*
+    <!-- 카메라 타입 토글 버튼 -->
+    <button id="toggleCameraButton" style="position: fixed; bottom: 50px; right: 10px; padding: 10px; background-color: rgba(0, 0, 0, 0.7); color: white; border: none; border-radius: 5px; cursor: pointer; z-index: 100;">
+      직교 카메라로 전환
+    </button>
+    */
+    <!-- 손바닥 시각화 토글 버튼 -->
+    <button id="togglePalmVisualizerButton" style="position: fixed; bottom: 90px; right: 10px; padding: 10px; background-color: rgba(0, 0, 0, 0.7); color: white; border: none; border-radius: 5px; cursor: pointer; z-index: 100;">
+    손바닥 시각화 켜기
+    </button>
+
+    <button id="exportRiggedLeftHandBtn" style="position: fixed; top: 260px; right: 10px; padding: 10px; background-color: rgba(0, 0, 0, 0.7); color: white; border: none; border-radius: 5px; cursor: pointer; z-index: 100;">
+        왼손 내보내기
+    </button>
+    <button id="exportRiggedRightHandBtn" style="position: fixed; top: 310px; right: 10px; padding: 10px; background-color: rgba(0, 0, 0, 0.7); color: white; border: none; border-radius: 5px; cursor: pointer; z-index: 100;">
+        오른손 내보내기
+    </button>
+
+    <script>
+    // 버튼 클릭 이벤트 추가
+    document.getElementById('exportRiggedLeftHandBtn').addEventListener('click', function() {
+        console.log("왼손 내보내기 버튼 클릭됨");
+        exportHandMeshSimple(0);
+    });
+    
+    document.getElementById('exportRiggedRightHandBtn').addEventListener('click', function() {
+        console.log("오른손 내보내기 버튼 클릭됨");
+        exportHandMeshSimple(1);
+    });
+    
+    // 간단한 내보내기 함수
+    function exportHandMeshSimple(handIndex) {
+        console.log("손 메쉬 내보내기 시작", handIndex);
+        
+        // 손 메쉬 존재 여부 확인
+        if (!app.handMeshes3D || !app.handMeshes3D[handIndex]) {
+        alert("손이 감지되지 않았습니다. 화면에 손을 보여주고 다시 시도하세요.");
+        return;
+        }
+        
+        try {
+        // 메쉬 복제
+        const handMeshClone = app.handMeshes3D[handIndex].clone();
+        
+        // 임시 씬 생성
+        const tempScene = new THREE.Scene();
+        tempScene.add(handMeshClone);
+        
+        // 내보내기 실행
+        const exporter = new THREE.GLTFExporter();
+        exporter.parse(
+            tempScene, 
+            function(result) {
+            // 성공 시 파일 저장
+            const filename = `hand_${handIndex}_${new Date().getTime()}.glb`;
+            const blob = new Blob([result], {type: 'application/octet-stream'});
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = filename;
+            link.click();
+            alert(`파일 "${filename}" 내보내기 완료!`);
+            },
+            function(error) {
+            // 오류 발생 시
+            console.error("내보내기 오류:", error);
+            alert("내보내기 중 오류가 발생했습니다: " + error);
+            },
+            {binary: true} // GLB 형식으로 내보내기
+        );
+        } catch (error) {
+        console.error("내보내기 실행 중 오류:", error);
+        alert("내보내기 실행 중 오류가 발생했습니다: " + error);
+        }
+    }
+    </script>
