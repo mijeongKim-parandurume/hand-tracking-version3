@@ -5,7 +5,6 @@ app.handMeshes3D = [null, null]; // [왼손, 오른손] 메쉬
 app.handSkeletons = [null, null]; // 본 정보 저장
 app.handBonesMap = [null, null]; // 본 이름과 Object3D 매핑
 app.useMeshModels = false; // 메쉬 모델 사용 여부 (토글용)
-app.useSimpleLandmarks = false; // 단순 랜드마크 시각화 모드
 
 // MediaPipe 랜드마크 인덱스와 본 이름 매핑
 app.landmarkToGLTFBone = [
@@ -110,43 +109,34 @@ app.initThree = function() {
     app.renderer.setPixelRatio(window.devicePixelRatio || 1);
     document.body.appendChild(app.renderer.domElement);
 
-    // 조명 설정 개선 (손 모델을 위한 더 자연스러운 조명)
-    // 1. 앰비언트 라이트 (전체적인 밝기)
-    const ambientLight = new THREE.AmbientLight(0x666666, 0.6); // 더 밝게
+    // 조명 추가
+    const ambientLight = new THREE.AmbientLight(0x404040);
     app.scene.add(ambientLight);
 
-    // 2. 메인 방향 조명 (키 라이트)
-    const mainLight = new THREE.DirectionalLight(0xffffff, 1.0);
-    mainLight.position.set(2, 4, 3);
-    mainLight.castShadow = true;
-    
-    // 그림자 설정 개선
-    mainLight.shadow.camera.near = 0.1;
-    mainLight.shadow.camera.far = 50;
-    mainLight.shadow.camera.left = -10;
-    mainLight.shadow.camera.right = 10;
-    mainLight.shadow.camera.top = 10;
-    mainLight.shadow.camera.bottom = -10;
-    mainLight.shadow.mapSize.width = 4096; // 고품질 그림자
-    mainLight.shadow.mapSize.height = 4096;
-    mainLight.shadow.radius = 8; // 부드러운 그림자
-    mainLight.shadow.bias = -0.0001;
-    
-    app.scene.add(mainLight);
+    // 첫 번째 방향 조명
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    directionalLight.position.set(1, 1, 1);
+    app.scene.add(directionalLight);
 
-    // 3. 필 라이트 (반대편에서 부드럽게 채우는 조명)
-    const fillLight = new THREE.DirectionalLight(0xffffff, 0.4);
-    fillLight.position.set(-2, 2, -1);
-    app.scene.add(fillLight);
-
-    // 4. 림 라이트 (윤곽선 강조)
-    const rimLight = new THREE.DirectionalLight(0xffffff, 0.3);
-    rimLight.position.set(0, 1, -3);
-    app.scene.add(rimLight);
-
-    // 그림자 설정 활성화
+    // 그림자 설정 추가
     app.renderer.shadowMap.enabled = true;
     app.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+    // 두 번째 방향 조명 (그림자 전용) - 이름을 변경
+    const shadowLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    shadowLight.position.set(1, 3, 2);
+    shadowLight.castShadow = true;
+    
+    // 그림자 범위 설정
+    shadowLight.shadow.camera.near = 0.1;
+    shadowLight.shadow.camera.far = 20;
+    shadowLight.shadow.camera.left = -5;
+    shadowLight.shadow.camera.right = 5;
+    shadowLight.shadow.camera.top = 5;
+    shadowLight.shadow.camera.bottom = -5;
+    shadowLight.shadow.mapSize.width = 2048;
+    shadowLight.shadow.mapSize.height = 2048;
+    app.scene.add(shadowLight);
 
     // 재질 수정
     app.jointMaterial = new THREE.MeshPhongMaterial({ color: 0xffffff });
@@ -154,27 +144,23 @@ app.initThree = function() {
     app.jointGeometry = new THREE.SphereGeometry(0.03, 16, 16);
     app.connectionMaterial = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 });
 
-    // 바닥 설정 (자연스러운 색상으로 복원)
-    const floorGeometry = new THREE.PlaneGeometry(20, 20);
-    const floorMaterial = new THREE.MeshPhongMaterial({ 
-        color: 0x808080, // 원래의 중간 회색으로 복원
-        shininess: 5,
-        specular: 0x111111
+    // 바닥 추가
+    const floorGeometry = new THREE.PlaneGeometry(10, 10);
+    const floorMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x808080, 
+        roughness: 0.7,
+        metalness: 0.1
     });
     const floor = new THREE.Mesh(floorGeometry, floorMaterial);
     floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -1.5; // 바닥을 조금 더 아래로
-    floor.receiveShadow = true; // 그림자 받기 활성화
+    floor.position.y = -1;
+    floor.receiveShadow = true;
     app.scene.add(floor);
 
-    // 상호작용할 큐브 3개 생성 (바닥 위에 배치)
-    const cubeSize = 0.2; // 큐브 크기
-    const floorY = -1.5; // 바닥 Y 위치
-    const cubeY = floorY + cubeSize / 2; // 큐브가 바닥에 닿도록 Y 위치 계산
-    
-    app.createInteractiveObject(new THREE.Vector3(-0.5, cubeY, 0), 0x00ff00); // 녹색 큐브
-    app.createInteractiveObject(new THREE.Vector3(0, cubeY, 0), 0x3399ff);    // 파란색 큐브  
-    app.createInteractiveObject(new THREE.Vector3(0.5, cubeY, 0), 0xff6600);  // 주황색 큐브
+    // 상호작용할 큐브 3개 생성
+    app.createInteractiveObject(new THREE.Vector3(-0.5, 0, 0), 0x00ff00); // 녹색 큐브
+    app.createInteractiveObject(new THREE.Vector3(0, 0, 0), 0x3399ff);    // 파란색 큐브  
+    app.createInteractiveObject(new THREE.Vector3(0.5, 0, 0), 0xff6600);  // 주황색 큐브
     // app.createInteractiveSphere(new THREE.Vector3(-0.5, 0, 0), 0x00ff00); // 녹색 구
     // app.createInteractiveObject(new THREE.Vector3(0, 0, 0), 0x3399ff);    // 파란색 큐브  
     // app.createInteractiveCylinder(new THREE.Vector3(0.5, 0, 0), 0x8844ff);     // 보라색 실린더 
@@ -208,33 +194,12 @@ app.initThree = function() {
     // 3D 손 메쉬 로드
     app.loadHandMeshes();
     
-    // 메쉬 토글 버튼 이벤트 리스너 추가 - 3단계 모드
+    // 메쉬 토글 버튼 이벤트 리스너 추가
     const toggleButton = document.getElementById('toggleMeshButton');
     if (toggleButton) {
-        let visualMode = 0; // 0: 기본 랜드마크, 1: 3D 모델, 2: 향상된 랜드마크
-        const modeNames = ['기본 랜드마크', '3D 손 모델', '향상된 랜드마크'];
-        
         toggleButton.addEventListener('click', function() {
-            visualMode = (visualMode + 1) % 3;
-            
-            if (visualMode === 0) {
-                // 기본 랜드마크 모드
-                app.useMeshModels = false;
-                app.useSimpleLandmarks = false;
-                this.textContent = '3D 손 모델 표시';
-            } else if (visualMode === 1) {
-                // 3D 손 모델 모드
-                app.useMeshModels = true;
-                app.useSimpleLandmarks = false;
-                this.textContent = '향상된 랜드마크 표시';
-            } else {
-                // 향상된 랜드마크 모드
-                app.useMeshModels = false;
-                app.useSimpleLandmarks = true;
-                this.textContent = '기본 랜드마크 표시';
-            }
-            
-            console.log(`시각화 모드 변경: ${modeNames[visualMode]}`);
+            app.useMeshModels = !app.useMeshModels;
+            this.textContent = app.useMeshModels ? '기본 랜드마크 표시' : '3D 손 메쉬 표시';
         });
     }
     
@@ -610,16 +575,7 @@ app.loadHandMeshes = function() {
         });
         
         app.handBonesMap[0] = bonesMap;
-        console.log("왼손 모델 로드 완료");
-        console.log("왼손 본 이름들:", Object.keys(bonesMap));
-        console.log("예상 본 이름들:", app.landmarkToGLTFBone);
-        
-        // 본 매핑 검증
-        app.landmarkToGLTFBone.forEach((expectedBoneName, index) => {
-            if (!bonesMap[expectedBoneName]) {
-                console.warn(`왼손: 본 '${expectedBoneName}' (인덱스 ${index})를 찾을 수 없습니다`);
-            }
-        });
+        console.log("왼손 모델 로드 완료", bonesMap);
     }, undefined, function(error) {
         console.error('왼손 모델 로드 실패:', error);
     });
@@ -664,16 +620,7 @@ app.loadHandMeshes = function() {
         });
         
         app.handBonesMap[1] = bonesMap;
-        console.log("오른손 모델 로드 완료");
-        console.log("오른손 본 이름들:", Object.keys(bonesMap));
-        console.log("예상 본 이름들:", app.landmarkToGLTFBone);
-        
-        // 본 매핑 검증
-        app.landmarkToGLTFBone.forEach((expectedBoneName, index) => {
-            if (!bonesMap[expectedBoneName]) {
-                console.warn(`오른손: 본 '${expectedBoneName}' (인덱스 ${index})를 찾을 수 없습니다`);
-            }
-        });
+        console.log("오른손 모델 로드 완료", bonesMap);
     }, undefined, function(error) {
         console.error('오른손 모델 로드 실패:', error);
     });
