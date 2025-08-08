@@ -292,6 +292,23 @@
               }
             });
           </script>
+          
+          <!-- 랜드마크 모드 전환 키보드 이벤트 -->
+          <script>
+              document.addEventListener('keydown', function(event) {
+                  if (event.key === '1') {
+                      // 기본 랜드마크 모드 (원과 선)
+                      app.useBasicLandmarks = true;
+                      app.useSimpleLandmarks = false;
+                      console.log("기본 랜드마크 모드 활성화 (원과 선)");
+                  } else if (event.key === '2') {
+                      // 향상된 랜드마크 모드 (3D 메쉬)
+                      app.useBasicLandmarks = false;
+                      app.useSimpleLandmarks = true;
+                      console.log("향상된 랜드마크 모드 활성화 (3D 메쉬)");
+                  }
+              });
+          </script>
     </body>
     </html>
 
